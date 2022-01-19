@@ -190,7 +190,24 @@ class GCStorageStreamIntegrationSpec
       bs.futureValue shouldBe content
     }
 
-    "get a None when downloading a non extisting file" ignore {
+    "be able to download (with ranges) an existing file" ignore {
+      val fileName = testFileName("test-file")
+      val content = ByteString(Random.alphanumeric.take(50000).map(c => c.toByte).toArray)
+      val bs = for {
+        _ <- GCStorageStream
+          .putObject(bucket, fileName, Source.single(content), ContentTypes.`text/plain(UTF-8)`)
+          .runWith(Sink.head)
+        bs <- GCStorageStream
+          .rangedDownload(bucket, fileName, 50000)
+          .runWith(Sink.head)
+          .flatMap(
+            _.map(_.runWith(Sink.fold(ByteString.empty) { _ ++ _ })).getOrElse(Future.successful(ByteString.empty))
+          )
+      } yield bs
+      bs.futureValue shouldBe content
+    }
+
+    "get a None when downloading a non existing file" ignore {
       val fileName = testFileName("non-existing-file")
       val download = GCStorageStream
         .download(bucket, fileName)

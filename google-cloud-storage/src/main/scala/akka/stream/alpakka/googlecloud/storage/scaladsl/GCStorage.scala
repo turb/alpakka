@@ -194,6 +194,44 @@ object GCStorage {
     GCStorageStream.download(bucket, objectName, generation)
 
   /**
+   * Downloads object from bucket using several consecutive request using the Range header, up to the requested size.
+   *
+   * This is Google Cloud recommended way of downloading big files.
+   *
+   * @see https://cloud.google.com/storage/docs/json_api/v1/objects/get
+   * @param bucket     the bucket name
+   * @param objectName the bucket prefix
+   * @param bucketSize the requested size of the bucket (must be at most the size of the bucket)
+   * @param rangeSize  the size of each range requested
+   * @param generation the generation of the object
+   * @return The source will emit an empty [[scala.Option Option]] if an object can not be found.
+   *         Otherwise [[scala.Option Option]] will contain a source of object's data.
+   */
+  def rangedDownload(bucket: String,
+                     objectName: String,
+                     bucketSize: Long,
+                     rangeSize: Int,
+                     generation: Option[Long]): Source[Option[Source[ByteString, NotUsed]], NotUsed] =
+    GCStorageStream.rangedDownload(bucket, objectName, bucketSize, rangeSize, generation)
+
+  /**
+   * Downloads object from bucket using several consecutive request using the Range header, up to the requested size.
+   *
+   * This is Google Cloud recommended way of downloading big files.
+   *
+   * @see https://cloud.google.com/storage/docs/json_api/v1/objects/get
+   * @param bucket     the bucket name
+   * @param objectName the bucket prefix
+   * @param bucketSize the requested size of the bucket (must be at most the size of the bucket)
+   * @return The source will emit an empty [[scala.Option Option]] if an object can not be found.
+   *         Otherwise [[scala.Option Option]] will contain a source of object's data.
+   */
+  def rangedDownload(bucket: String,
+                     objectName: String,
+                     bucketSize: Long): Source[Option[Source[ByteString, NotUsed]], NotUsed] =
+    GCStorageStream.rangedDownload(bucket, objectName, bucketSize)
+
+  /**
    * Uploads object, use this for small files and `resumableUpload` for big ones
    *
    * @see https://cloud.google.com/storage/docs/json_api/v1/how-tos/simple-upload

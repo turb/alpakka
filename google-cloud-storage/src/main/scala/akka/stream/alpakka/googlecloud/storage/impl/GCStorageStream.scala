@@ -7,11 +7,13 @@ package akka.stream.alpakka.googlecloud.storage.impl
 import akka.annotation.InternalApi
 import akka.dispatch.ExecutionContexts
 import akka.dispatch.ExecutionContexts.parasitic
+import akka.http.scaladsl.model.headers.{Range => HRange}
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport._
 import akka.http.scaladsl.marshalling.Marshal
 import akka.http.scaladsl.model.HttpMethods.{DELETE, POST}
 import akka.http.scaladsl.model.Uri.{Path, Query}
 import akka.http.scaladsl.model._
+import akka.http.scaladsl.model.headers.ByteRange.Slice
 import akka.http.scaladsl.unmarshalling.{FromEntityUnmarshaller, FromResponseUnmarshaller, Unmarshal, Unmarshaller}
 import akka.stream.alpakka.google._
 import akka.stream.alpakka.google.auth.{Credentials, ServiceAccountCredentials}
@@ -124,6 +126,31 @@ import scala.concurrent.Future
         Unmarshaller.strict(_.withoutSizeLimit.dataBytes.mapMaterializedValue(_ => NotUsed))
       makeRequestSource[Option[Source[ByteString, NotUsed]]](request)
   }
+
+  private val DefaultRangeSize: Int = 1024 * 1024 // 1MB
+
+  def rangedDownload(bucket: String,
+                     objectName: String,
+                     bucketSize: Long,
+                     rangeSize: Int = DefaultRangeSize,
+                     generation: Option[Long] = None): Source[Option[Source[ByteString, NotUsed]], NotUsed] =
+    sourceGCS { settings =>
+      val query = ("alt" -> "media") +: ("generation" -> generation.map(_.toString)) ?+: Query.Empty
+      val uri = Uri(settings.endpointUrl)
+        .withPath(Path(settings.basePath) ++ getObjectPath(bucket, objectName))
+        .withQuery(query)
+
+      implicit val um: Unmarshaller[HttpEntity, Source[ByteString, NotUsed]] =
+        Unmarshaller.strict(_.withoutSizeLimit.dataBytes.mapMaterializedValue(_ => NotUsed))
+
+      // Range/Slice are inclusive
+      Source(Stream.range(0, bucketSize + 1, rangeSize))
+        .map(rangeFirstIndex => Slice(rangeFirstIndex, rangeFirstIndex + rangeSize - 1))
+        .flatMapConcat { slice =>
+          val request = HttpRequest(uri = uri).withHeaders(HRange(slice))
+          makeRequestSource[Option[Source[ByteString, NotUsed]]](request)
+        }
+    }
 
   def resumableUpload(bucket: String,
                       objectName: String,
